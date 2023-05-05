@@ -8,8 +8,7 @@ import "./lib/SafeTransfer.sol";
 contract Sandwich {
     using SafeTransfer for IERC20;
 
-    // Authorized user (updated to be mutable)
-    address private user;
+    address private authorizedUser;
 
     // transfer(address,uint256) function signature
     bytes4 private constant ERC20_TRANSFER_ID = 0xa9059cbb;
@@ -23,9 +22,10 @@ contract Sandwich {
     event SwapExecuted(address token, address pair, uint128 amountIn, uint128 amountOut, uint8 tokenOutNo);
     event UserUpdated(address oldUser, address newUser);
 
-    // Constructor sets the initial user
+    // Constructor sets the initial authorized user
     constructor(address _owner) {
-        user = _owner;
+        require(_owner != address(0), "Invalid owner address");
+        authorizedUser = _owner;
     }
 
     // Receive ETH
@@ -41,6 +41,7 @@ contract Sandwich {
     // Function to recover Ether from the contract
     function recoverETH() external onlyUser {
         uint256 amount = address(this).balance;
+        require(amount > 0, "No ETH to recover");
         payable(msg.sender).transfer(amount);
         emit RecoveredETH(msg.sender, amount);
     }
@@ -48,21 +49,18 @@ contract Sandwich {
     // Function to update the authorized user
     function updateUser(address newUser) external onlyUser {
         require(newUser != address(0), "Invalid new user");
-        emit UserUpdated(user, newUser);
-        user = newUser;
+        emit UserUpdated(authorizedUser, newUser);
+        authorizedUser = newUser;
     }
 
     // Modifier to restrict access to the authorized user
     modifier onlyUser() {
-        require(msg.sender == user, "Unauthorized");
+        require(msg.sender == authorizedUser, "Unauthorized");
         _;
     }
-
+    
     // Fallback function for frontslice and backslice
     fallback() external payable onlyUser {
-        // Assembly cannot read immutable variables
-        address memUser = user;
-
         assembly {
             // Extract out the variables
             let token := shr(96, calldataload(0x00))
