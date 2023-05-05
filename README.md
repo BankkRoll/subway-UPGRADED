@@ -33,8 +33,8 @@ The goal of this bot is to act as a low barrier of entry, reference source code 
 
 While the bot is functional, below are the upgrades in progress:
 
-- [ ] circuit breakers
-- [ ] poison token checker
+- [x] circuit breakers
+- [x] poison token checker
 - [ ] caching system
 - [ ] robust logging system (e.g. Grafana)
 - [ ] various gas saving ALPHAs
