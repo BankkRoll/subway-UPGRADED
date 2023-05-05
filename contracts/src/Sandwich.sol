@@ -71,54 +71,54 @@ contract Sandwich {
             let amountOut := shr(128, calldataload(0x38))
             let tokenOutNo := shr(248, calldataload(0x48))
 
-        // Input validation
-        if iszero(amountIn) {
-            revert("Invalid amountIn")
-        }
-        if iszero(amountOut) {
-            revert("Invalid amountOut")
-        }
-        if gt(tokenOutNo, 1) {
-            revert("Invalid tokenOutNo")
-        }
+            // Input validation
+            if iszero(amountIn) {
+                revert("Invalid amountIn")
+            }
+            if iszero(amountOut) {
+                revert("Invalid amountOut")
+            }
+            if gt(tokenOutNo, 1) {
+                revert("Invalid tokenOutNo")
+            }
 
-        // **** calls token.transfer(pair, amountIn) ****
-        mstore(0x7c, ERC20_TRANSFER_ID)
-        mstore(0x80, pair)
-        mstore(0xa0, amountIn)
+            // **** calls token.transfer(pair, amountIn) ****
+            mstore(0x7c, ERC20_TRANSFER_ID)
+            mstore(0x80, pair)
+            mstore(0xa0, amountIn)
 
-        let s1 := call(sub(gas(), 5000), token, 0, 0x7c, 0x44, 0, 0)
-        if iszero(s1) {
-            revert("Token transfer failed")
+            let s1 := call(sub(gas(), 5000), token, 0, 0x7c, 0x44, 0, 0)
+            if iszero(s1) {
+                revert("Token transfer failed")
+            }
+
+            // ************
+            // calls pair.swap(
+            //     tokenOutNo == 0 ? amountOut : 0,
+            //     tokenOutNo == 1 ? amountOut : 0,
+            //     address(this),
+            //     new bytes(0)
+            // )
+            mstore(0x7c, PAIR_SWAP_ID)
+            mstore(
+                0x80,
+                (tokenOutNo == 0 ? amountOut : 0) | (tokenOutNo == 1 ? amountOut << 128 : 0)
+            )
+            mstore(0xc0, address())
+            mstore(0xe0, 0x80)
+
+            let s2 := call(sub(gas(), 5000), pair, 0, 0x7c, 0xa4, 0, 0)
+            if iszero(s2) {
+                revert("Swap failed")
+            }
+
+            // Emit event for successful swap execution
+            log3(
+                0x00, 0x60,                   // Memory offset and length
+                keccak256("SwapExecuted(address,address,uint128,uint128,uint8)"),
+                token, pair, amountIn, amountOut, tokenOutNo
+            )
         }
-
-        // ************
-        // calls pair.swap(
-        //     tokenOutNo == 0 ? amountOut : 0,
-        //     tokenOutNo == 1 ? amountOut : 0,
-        //     address(this),
-        //     new bytes(0)
-        // )
-        mstore(0x7c, PAIR_SWAP_ID)
-        mstore(
-            0x80,
-            (tokenOutNo == 0 ? amountOut : 0) | (tokenOutNo == 1 ? amountOut << 128 : 0)
-        )
-        mstore(0xc0, address())
-        mstore(0xe0, 0x80)
-
-        let s2 := call(sub(gas(), 5000), pair, 0, 0x7c, 0xa4, 0, 0)
-        if iszero(s2) {
-            revert("Swap failed")
-        }
-
-        // Emit event for successful swap execution
-        log3(
-            0x00, 0x60,                   // Memory offset and length
-            keccak256("SwapExecuted(address,address,uint128,uint128,uint8)"),
-            token, pair, amountIn, amountOut, tokenOutNo
-        )
     }
-}
 }
 
