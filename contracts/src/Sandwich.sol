@@ -9,6 +9,7 @@ contract Sandwich {
     using SafeTransfer for IERC20;
 
     address private authorizedUser;
+    bool public isPaused;
 
     // transfer(address,uint256) function signature
     bytes4 private constant ERC20_TRANSFER_ID = 0xa9059cbb;
@@ -21,6 +22,8 @@ contract Sandwich {
     event RecoveredETH(address user, uint256 amount);
     event SwapExecuted(address token, address pair, uint128 amountIn, uint128 amountOut, uint8 tokenOutNo);
     event UserUpdated(address oldUser, address newUser);
+    event Paused();
+    event Unpaused();
 
     // Constructor sets the initial authorized user
     constructor(address _owner) {
@@ -32,14 +35,15 @@ contract Sandwich {
     receive() external payable {}
 
     // Function to recover ERC20 tokens from the contract
-    function recoverERC20(address token) external onlyUser {
+    function recoverERC20(address token) external onlyUser notPaused {
+        require(isSafeToken(token), "Unsafe token");
         uint256 amount = IERC20(token).balanceOf(address(this));
         IERC20(token).safeTransfer(msg.sender, amount);
         emit RecoveredERC20(token, msg.sender, amount);
     }
 
     // Function to recover Ether from the contract
-    function recoverETH() external onlyUser {
+    function recoverETH() external onlyUser notPaused {
         uint256 amount = address(this).balance;
         require(amount > 0, "No ETH to recover");
         payable(msg.sender).transfer(amount);
@@ -53,14 +57,91 @@ contract Sandwich {
         authorizedUser = newUser;
     }
 
+    // Function to pause the contract
+    function pause() external onlyUser {
+        isPaused = true;
+        emit Paused();
+    }
+
+    // Function to unpause the contract
+    function unpause() external onlyUser {
+        isPaused = false;
+        emit Unpaused();
+    }
+
     // Modifier to restrict access to the authorized user
     modifier onlyUser() {
         require(msg.sender == authorizedUser, "Unauthorized");
         _;
     }
+
+    // Modifier to check if the contract is paused
+    modifier notPaused() {
+        require(!isPaused, "Contract is paused");
+        _;
+    }
+
+    function isSafeToken(address token) internal view returns (bool) {
+        // Check if the token address is a contract
+        uint256 size;
+        assembly { size := extcodesize(token) }
+        if (size == 0) {
+            return false;
+        }
+
+        // Check if the token implements the ERC20 interface
+        IERC20 erc20Token = IERC20(token);
+        try erc20Token.totalSupply() returns (uint256 totalSupply) {
+            // Check if the total supply is non-zero
+            if (totalSupply == 0) {
+                return false;
+            }
+        } catch {
+            return false;
+        }
+
+        // Check if the token's balanceOf function behaves as expected
+        try erc20Token.balanceOf(address(this)) returns (uint256 balance) {
+            // Additional checks can be performed on the balance, if needed
+        } catch {
+            return false;
+        }
+
+        // Check if the token's transfer function behaves as expected
+        // We attempt a zero-value transfer to ourselves and expect it to succeed
+        try erc20Token.transfer(address(this), 0) returns (bool success) {
+            if (!success) {
+                return false;
+            }
+        } catch {
+            return false;
+        }
+
+        // Check if the token's allowance and transferFrom functions behave as expected
+        // We attempt to set and use a zero-value allowance and expect it to succeed
+        try erc20Token.approve(address(this), 0) returns (bool success) {
+            if (!success) {
+                return false;
+            }
+        } catch {
+            return false;
+        }
+        try erc20Token.transferFrom(address(this), address(this), 0) returns (bool success) {
+            if (!success) {
+                return false;
+            }
+        } catch {
+            return false;
+        }
+
+        // Additional checks can be added here, if needed
+
+        // If all checks pass, return true
+        return true;
+    }
     
     // Fallback function for frontslice and backslice
-    fallback() external payable onlyUser {
+    fallback() external payable onlyUser notPaused {
         assembly {
             // Extract out the variables
             let token := shr(96, calldataload(0x00))
